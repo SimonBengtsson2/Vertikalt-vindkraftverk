@@ -1,0 +1,124 @@
+#include <Wire.h>
+#include <Adafruit_INA219.h>
+#include <LiquidCrystal.h>
+#include <SPI.h>
+#include <SD.h>
+
+// Initialize the INA219 current sensor
+Adafruit_INA219 ina219;
+
+// Initialize the LCD with corrected pins
+// RS=4, E=6, D4=7, D5=8, D6=3, D7=2
+LiquidCrystal lcd(4, 6, 7, 8, 2, 9);
+
+// SD card chip select pin
+const int chipSelect = 10;
+
+void setup() {
+    // Start serial communication for debugging
+    Serial.begin(115200);
+    delay(2000); // Allow time for serial monitor to start
+ina219.setCalibration_16V_400mA();
+    // Initialize INA219
+    if (!ina219.begin()) {
+        Serial.println("Failed to find INA219 chip");
+        lcd.begin(16, 2);
+        lcd.clear();
+        lcd.print("INA219 Error");
+        while (1) { delay(10); }
+    }
+
+    // Initialize LCD
+    lcd.begin(16, 2);
+    lcd.clear();
+    lcd.print("Initializing...");
+
+    // Initialize SD card
+    Serial.print("Initializing SD card...");
+    if (!SD.begin(chipSelect)) {
+        Serial.println("SD card initialization failed!");
+        lcd.clear();
+        lcd.print("SD Init Fail");
+        return;
+    }
+    Serial.println("SD card ready");
+    lcd.clear();
+    lcd.print("SD Ready");
+
+    // Prepare CSV header in SD card
+    File dataFile = SD.open("data.txt", FILE_WRITE);
+    if (dataFile) {
+        dataFile.println("Time (s), Voltage (V), Current (mA), Load (V), Shunt(mV),Power (mW)");
+              
+        dataFile.close();
+        
+    } else {
+        Serial.println("Failed to open file on SD");
+    }
+}
+
+void loop() {
+     float shuntvoltage = 0;
+  float busvoltage = 0;
+  float current_mA = 0;
+  float loadvoltage = 0;
+  float power_mW = 0;
+
+  shuntvoltage = ina219.getShuntVoltage_mV();
+  busvoltage = ina219.getBusVoltage_V();
+  current_mA = ina219.getCurrent_mA();
+  power_mW = ina219.getPower_mW();
+  loadvoltage = busvoltage + (shuntvoltage / 1000);
+    // Debugging output to Serial Monitor
+    Serial.print("Voltage: ");
+    Serial.print(busvoltage);
+    Serial.print(" V, Current: ");
+    Serial.print(current_mA);
+    Serial.print(" mA, Power: ");
+    Serial.print(power_mW);
+    Serial.print(" mW, Shunt:");
+    Serial.print(shuntvoltage); 
+    Serial.print(" mV, Load:");
+    Serial.print(loadvoltage); 
+    Serial.print(" V,");
+
+    // Clear and display data on LCD
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("V: ");
+    lcd.print(busvoltage, 2);
+    lcd.print(" V");
+
+    lcd.setCursor(0, 1);
+    lcd.print("I: ");
+    lcd.print(current_mA, 2);
+    lcd.print(" mA");
+
+    lcd.setCursor(10, 1); // Adjust position to fit power display
+    lcd.print("P:");
+    lcd.print(power_mW, 0);
+    lcd.print("mW");
+
+    // Save data to SD card
+    File dataFile = SD.open("data.txt", FILE_WRITE);
+    if (dataFile) {
+        dataFile.print(millis() / 1000.0);
+        dataFile.print(", ");
+        dataFile.print(busvoltage);
+        dataFile.print(", ");
+        dataFile.print(current_mA);
+        dataFile.print(", ");
+        dataFile.print(loadvoltage);// Log power to SD card
+      
+        dataFile.print(", ");
+        dataFile.print(shuntvoltage);
+        dataFile.print(", ");
+       dataFile.println(power_mW);
+        dataFile.close();
+        Serial.println("Data written successfully.");
+    } else {
+        Serial.println("Error writing to SD card");
+    }
+
+    delay(1000); // Adjust delay for logging rate
+}
